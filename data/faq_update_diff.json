@@ -1,0 +1,68 @@
+{
+  "ADDED": [],
+  "MODIFIED_ANSWER": [
+    {
+      "question": "Для чего нужен Центр дистанционной поддержки обучения?"
+    },
+    {
+      "question": "Для чего нужен Электронный атлас?"
+    },
+    {
+      "question": "Для чего нужен Электронный справочник?"
+    },
+    {
+      "question": "Для чего нужно Электронное портфолио обучающихся?"
+    },
+    {
+      "question": "Как зарегистрироваться в электронной образовательной среде Герценовского университета?"
+    },
+    {
+      "question": "Как получить место в общежитии?"
+    },
+    {
+      "question": "Посещение занятий."
+    },
+    {
+      "question": "Что делать если я не сдал сессию?"
+    }
+  ],
+  "MODIFIED_QUESTION": [
+    {
+      "old_question": "Как связаться с преподавателем?",
+      "new_question": "Как связаться или найти преподавателя?",
+      "answer_changed": true,
+      "metadata_changed": true
+    }
+  ],
+  "MODIFIED_METADATA": [],
+  "REMOVED_FROM_SOURCE": [],
+  "UNCHANGED": [
+    {
+      "question": "Корпус института экономики и управления"
+    },
+    {
+      "question": "Почему есть занятия по субботам?"
+    },
+    {
+      "question": "Студенческое самоуправление."
+    },
+    {
+      "question": "Что делать в случае пожара?"
+    },
+    {
+      "question": "Что делать в случае террористической опасности?"
+    }
+  ],
+  "POSSIBLE_DUPLICATE": [],
+  "AMBIGUOUS": [],
+  "summary": {
+    "ADDED": 0,
+    "MODIFIED_ANSWER": 8,
+    "MODIFIED_QUESTION": 1,
+    "MODIFIED_METADATA": 0,
+    "REMOVED_FROM_SOURCE": 0,
+    "UNCHANGED": 5,
+    "POSSIBLE_DUPLICATE": 0,
+    "AMBIGUOUS": 0
+  }
+}
