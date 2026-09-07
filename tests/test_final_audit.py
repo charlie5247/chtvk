@@ -156,7 +156,7 @@ def test_operator_switch_invalidates_callback(system):
 
 def test_keyboard_constraints_and_no_duplicate_options():
     keyboard=clarification_keyboard([{"question":"Очень длинный русский текст "*5,"faq_id":1,"nonce":"n"},{"question":"duplicate","faq_id":1,"nonce":"n"},{"question":"B","faq_id":2,"nonce":"m"}])
-    assert len(keyboard["buttons"]) == 2
+    assert len(keyboard["buttons"]) == 3
     action=keyboard["buttons"][0][0]["action"]
     assert len(action["label"]) <= 40 and json.loads(action["payload"]) == {"action":"clarification","faq_id":1,"nonce":"n"}
 

@@ -16,6 +16,7 @@ class IncomingVKMessage:
     timestamp: int | None
     raw_type: str
     payload: dict[str, Any] | None = None
+    callback_event_id: str | None = None
 
 
 def parse_event(raw: object) -> IncomingVKMessage | None:
@@ -47,4 +48,12 @@ def parse_event(raw: object) -> IncomingVKMessage | None:
     payload = message.get("payload")
     if payload is not None and not isinstance(payload, dict):
         raise ValidationError("Некорректный callback payload")
-    return IncomingVKMessage(event_id.strip(), user_id, peer_id, text, cmid, timestamp, event_type, payload)
+    callback_event_id = message.get("event_id") if event_type == "message_event" else None
+    if event_type == "message_event" and (
+        not isinstance(callback_event_id, str) or not callback_event_id.strip()
+    ):
+        raise ValidationError("Отсутствует callback event_id")
+    return IncomingVKMessage(
+        event_id.strip(), user_id, peer_id, text, cmid, timestamp, event_type,
+        payload, callback_event_id.strip() if callback_event_id else None,
+    )

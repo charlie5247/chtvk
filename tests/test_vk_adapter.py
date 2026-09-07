@@ -21,7 +21,7 @@ def message(event_id, text, user=100, peer=None):
 
 
 def callback(event_id, payload, user=100, peer=None):
-    return {"type": "message_event", "event_id": event_id, "object": {"user_id": user, "peer_id": peer or user, "text": "", "payload": payload}}
+    return {"type": "message_event", "event_id": event_id, "object": {"event_id": f"callback-{event_id}", "user_id": user, "peer_id": peer or user, "conversation_message_id": 1, "payload": payload}}
 
 
 @pytest.fixture()
@@ -76,7 +76,7 @@ def test_forged_other_user_expired_and_inactive_callbacks(vk_env):
     payload = json.loads(client.sent[-1].keyboard["buttons"][0][0]["action"]["payload"])
     forged = {"action": "clarification", "faq_id": 999999}
     assert adapter.handle_event(callback("c2", forged)).status is AdapterStatus.INVALID_EVENT
-    assert client.sent[-1].text == CALLBACK_REJECTED_TEXT
+    assert client.callbacks[-1]["text"] == "Кнопка устарела. Попробуйте ещё раз."
 
     adapter.handle_event(message("c3", "для чего нужен электронный", user=101))
     assert adapter.handle_event(callback("c4", payload, user=101)).response_type == "NOT_FOUND"

@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 TOO_LONG_TEXT = "Сообщение слишком длинное. Пожалуйста, сформулируйте вопрос короче."
 RATE_LIMIT_TEXT = "Слишком много сообщений. Пожалуйста, попробуйте немного позже."
 CALLBACK_REJECTED_TEXT = "Этот вариант больше недоступен. Пожалуйста, задайте вопрос снова."
+CALLBACK_REJECTED_ACK = "Кнопка устарела. Попробуйте ещё раз."
 
 
 class AdapterStatus(str, Enum):
@@ -67,7 +68,7 @@ class VKAdapter:
         keyboard = None
         if response.type is ResponseType.CLARIFICATION:
             keyboard = clarification_keyboard(response.options)
-        elif response.type is ResponseType.NOT_FOUND:
+        elif response.type in {ResponseType.FAQ_ANSWER, ResponseType.NOT_FOUND, ResponseType.SWITCHED_TO_BOT}:
             keyboard = operator_keyboard()
         elif response.type is ResponseType.SWITCHED_TO_OPERATOR:
             keyboard = bot_keyboard()
@@ -75,19 +76,34 @@ class VKAdapter:
         logger.info("VK response event_id=%s user_id=%s type=%s faq_id=%s confidence=%s", event.event_id, event.user_id, response.type.value, response.faq_id, response.confidence.value if response.confidence else None)
         return AdapterResult(AdapterStatus.PROCESSED, response.type.value)
 
+    def _ack_callback(self, event: IncomingVKMessage, text: str) -> None:
+        try:
+            self.client.answer_callback(event.callback_event_id or "", event.user_id, event.peer_id, text)
+        except (TemporaryVKError, PermanentVKError, TimeoutError):
+            logger.exception("VK callback acknowledgement failed event_id=%s user_id=%s", event.event_id, event.user_id)
+        except Exception:
+            logger.exception("Unexpected callback acknowledgement failure event_id=%s user_id=%s", event.event_id, event.user_id)
+
     def _callback(self, event: IncomingVKMessage, logic: BotLogic):
         payload = event.payload or {}
         action = payload.get("action")
-        if action == "operator":
-            return logic.handle_message(event.user_id, "оператор")
-        if action == "bot":
-            return logic.handle_message(event.user_id, "вернуться к боту")
+        logged_action = action if isinstance(action, str) and action in {"operator", "bot", "clarification"} else "invalid"
+        logger.info("VK callback event_id=%s user_id=%s action=%s", event.event_id, event.user_id, logged_action)
+        if isinstance(action, str) and action in {"operator", "bot"} and set(payload) == {"action"}:
+            response = logic.handle_mode_callback(event.user_id, action)
+            return response, "Диалог передан оператору" if action == "operator" else "Автоматический помощник включён"
         faq_id = payload.get("faq_id")
         nonce = payload.get("nonce")
-        if action != "clarification" or type(faq_id) is not int or faq_id <= 0 or not isinstance(nonce, str) or not nonce:
-            logger.warning("Rejected callback event_id=%s user_id=%s", event.event_id, event.user_id)
-            return None
-        return logic.select_clarification(event.user_id, faq_id, nonce)
+        if (action != "clarification" or set(payload) != {"action", "faq_id", "nonce"}
+                or type(faq_id) is not int or faq_id <= 0
+                or not isinstance(nonce, str) or not nonce or len(nonce) > 128):
+            logger.warning("Rejected callback event_id=%s user_id=%s reason=invalid_payload", event.event_id, event.user_id)
+            return None, CALLBACK_REJECTED_ACK
+        response = logic.select_clarification(event.user_id, faq_id, nonce)
+        if response.type is ResponseType.FAQ_ANSWER:
+            return response, "Ответ выбран"
+        logger.warning("Rejected callback event_id=%s user_id=%s reason=stale_or_forbidden", event.event_id, event.user_id)
+        return response, CALLBACK_REJECTED_ACK
 
     def handle_event(self, raw_event: object) -> AdapterResult:
         try:
@@ -109,7 +125,10 @@ class VKAdapter:
                 return AdapterResult(AdapterStatus.DUPLICATE)
             if not self.rate_limiter.allow(event.user_id):
                 logger.warning("VK rate limit event_id=%s user_id=%s", event.event_id, event.user_id)
-                self._send(event, RATE_LIMIT_TEXT)
+                if event.raw_type == "message_event":
+                    self._ack_callback(event, CALLBACK_REJECTED_ACK)
+                else:
+                    self._send(event, RATE_LIMIT_TEXT)
                 dedup.finish(event.event_id)
                 return AdapterResult(AdapterStatus.RATE_LIMITED)
             if len(event.text) > self.config.max_input_length:
@@ -118,17 +137,27 @@ class VKAdapter:
                 return AdapterResult(AdapterStatus.INPUT_TOO_LONG)
 
             logic = BotLogic(connection)
-            response = self._callback(event, logic) if event.raw_type == "message_event" else logic.handle_message(event.user_id, event.text)
+            if event.raw_type == "message_event":
+                response, acknowledgement = self._callback(event, logic)
+            else:
+                response, acknowledgement = logic.handle_message(event.user_id, event.text), None
             if response is None:
-                self._send(event, CALLBACK_REJECTED_TEXT)
                 result = AdapterResult(AdapterStatus.INVALID_EVENT)
             else:
-                result = self._dispatch(event, response)
+                try:
+                    result = self._dispatch(event, response)
+                finally:
+                    if acknowledgement is not None:
+                        self._ack_callback(event, acknowledgement)
+            if response is None and acknowledgement is not None:
+                self._ack_callback(event, acknowledgement)
             dedup.finish(event.event_id)
             return result
         except sqlite3.OperationalError:
             connection.rollback()
             logger.exception("SQLite operational error event_id=%s", event.event_id)
+            if event.raw_type == "message_event":
+                self._ack_callback(event, CALLBACK_REJECTED_ACK)
             return AdapterResult(AdapterStatus.ERROR)
         except PermanentVKError:
             logger.exception("Permanent VK API error event_id=%s", event.event_id)
