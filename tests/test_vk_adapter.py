@@ -20,8 +20,8 @@ def message(event_id, text, user=100, peer=None):
     return {"type": "message_new", "event_id": event_id, "object": {"message": {"from_id": user, "peer_id": peer or user, "text": text, "conversation_message_id": 1, "date": 1}}}
 
 
-def callback(event_id, payload, user=100, peer=None):
-    return {"type": "message_event", "event_id": event_id, "object": {"user_id": user, "peer_id": peer or user, "text": "", "payload": payload}}
+def callback(event_id, payload, user=100, peer=None, callback_event_id=None):
+    return {"type": "message_event", "event_id": event_id, "object": {"event_id": callback_event_id or f"object-{event_id}", "user_id": user, "peer_id": peer or user, "text": "", "payload": payload}}
 
 
 @pytest.fixture()
@@ -51,6 +51,7 @@ def test_faq_end_to_end(vk_env):
     result = adapter.handle_event(message("faq-1", "почему учеба по субботам"))
     expected = connect(db).execute("SELECT answer FROM faq WHERE question='Почему есть занятия по субботам?'").fetchone()[0]
     assert result.response_type == "FAQ_ANSWER" and client.sent[0].text == expected
+    assert "operator" in client.sent[0].keyboard["buttons"][0][0]["action"]["payload"]
 
 
 def test_not_found_has_operator_keyboard(vk_env):
@@ -65,9 +66,28 @@ def test_clarification_callback_full_flow(vk_env):
     payload = json.loads(client.sent[-1].keyboard["buttons"][0][0]["action"]["payload"])
     result = adapter.handle_event(callback("cl-2", payload))
     assert result.response_type == "FAQ_ANSWER"
+    assert client.callbacks[-1] == {"event_id": "object-cl-2", "user_id": 100, "peer_id": 100, "text": "Ответ выбран"}
     assert client.sent[-1].text and client.sent[-1].text != CALLBACK_REJECTED_TEXT
     repeated = adapter.handle_event(callback("cl-3", payload))
     assert repeated.response_type == "NOT_FOUND"
+    assert client.callbacks[-1]["text"] == "Кнопка устарела. Попробуйте ещё раз."
+
+
+@pytest.mark.parametrize("payload", [None, {}, {"action": "unknown"}, {"action": "clarification", "faq_id": True, "nonce": "n"}, {"action": "clarification", "faq_id": 0, "nonce": "n"}, {"action": "clarification", "faq_id": 1}])
+def test_invalid_callbacks_are_acknowledged(vk_env, payload):
+    _, client, adapter = vk_env
+    result = adapter.handle_event(callback(f"invalid-{len(client.callbacks)}", payload))
+    assert result.status is AdapterStatus.INVALID_EVENT
+    assert client.callbacks[-1]["text"] == "Кнопка устарела. Попробуйте ещё раз."
+
+
+def test_callback_transport_and_vk_ids_are_distinct(vk_env):
+    _, client, adapter = vk_env
+    event = callback("transport-id", {"action": "operator"}, callback_event_id="vk-callback-id")
+    assert adapter.handle_event(event).response_type == "SWITCHED_TO_OPERATOR"
+    assert client.callbacks[-1]["event_id"] == "vk-callback-id"
+    assert adapter.handle_event(event).status is AdapterStatus.DUPLICATE
+    assert len(client.callbacks) == 1
 
 
 def test_forged_other_user_expired_and_inactive_callbacks(vk_env):

@@ -33,6 +33,11 @@ class BotResponse:
 OPERATOR_COMMANDS = {"оператор", "связаться с оператором", "позвать оператора", "живой оператор"}
 BOT_COMMANDS = {"вернуться к боту", "бот", "вернуться в меню"}
 NOT_FOUND_TEXT = "Я не нашёл точного ответа в базе. Вы можете сформулировать вопрос иначе или обратиться к оператору."
+OPERATOR_TEXT = (
+    "Диалог передан оператору. Напишите ваш вопрос одним сообщением.\n"
+    "Пока диалог передан оператору, автоматические ответы отключены."
+)
+BOT_TEXT = "Автоматический помощник снова включён. Можете задать вопрос."
 logger = logging.getLogger(__name__)
 
 
@@ -69,11 +74,11 @@ class BotLogic:
         if normalized in BOT_COMMANDS:
             self.interactions.clear_clarification(vk_user_id)
             self.operator.switch_to_bot(vk_user_id)
-            return self._respond(vk_user_id, BotResponse(ResponseType.SWITCHED_TO_BOT, "Автоматический помощник снова включён."))
+            return self._respond(vk_user_id, BotResponse(ResponseType.SWITCHED_TO_BOT, BOT_TEXT))
         if normalized in OPERATOR_COMMANDS:
             self.interactions.clear_clarification(vk_user_id)
             self.operator.switch_to_operator(vk_user_id)
-            return self._respond(vk_user_id, BotResponse(ResponseType.SWITCHED_TO_OPERATOR, "Диалог передан оператору. Напишите ваш вопрос одним сообщением."))
+            return self._respond(vk_user_id, BotResponse(ResponseType.SWITCHED_TO_OPERATOR, OPERATOR_TEXT))
         if self.operator.is_operator_mode(vk_user_id):
             return BotResponse(ResponseType.OPERATOR_MODE, "")
 

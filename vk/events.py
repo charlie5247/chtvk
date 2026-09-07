@@ -8,7 +8,8 @@ from .exceptions import ValidationError
 
 @dataclass(frozen=True, slots=True)
 class IncomingVKMessage:
-    event_id: str
+    transport_event_id: str
+    callback_event_id: str | None
     user_id: int
     peer_id: int
     text: str
@@ -26,9 +27,9 @@ def parse_event(raw: object) -> IncomingVKMessage | None:
         raise ValidationError("Некорректный тип VK event")
     if event_type not in {"message_new", "message_event"}:
         return None
-    event_id = raw.get("event_id")
+    transport_event_id = raw.get("event_id")
     obj = raw.get("object")
-    if not isinstance(event_id, str) or not event_id.strip() or not isinstance(obj, dict):
+    if not isinstance(transport_event_id, str) or not transport_event_id.strip() or not isinstance(obj, dict):
         raise ValidationError("Отсутствует event_id или object")
     message = obj.get("message", obj) if event_type == "message_new" else obj
     if not isinstance(message, dict):
@@ -47,4 +48,7 @@ def parse_event(raw: object) -> IncomingVKMessage | None:
     payload = message.get("payload")
     if payload is not None and not isinstance(payload, dict):
         raise ValidationError("Некорректный callback payload")
-    return IncomingVKMessage(event_id.strip(), user_id, peer_id, text, cmid, timestamp, event_type, payload)
+    callback_event_id = message.get("event_id") if event_type == "message_event" else None
+    if event_type == "message_event" and (not isinstance(callback_event_id, str) or not callback_event_id.strip()):
+        raise ValidationError("Отсутствует callback event_id")
+    return IncomingVKMessage(transport_event_id.strip(), callback_event_id.strip() if callback_event_id else None, user_id, peer_id, text, cmid, timestamp, event_type, payload)
