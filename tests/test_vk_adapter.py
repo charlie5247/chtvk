@@ -51,13 +51,17 @@ def test_faq_end_to_end(vk_env):
     result = adapter.handle_event(message("faq-1", "почему учеба по субботам"))
     expected = connect(db).execute("SELECT answer FROM faq WHERE question='Почему есть занятия по субботам?'").fetchone()[0]
     assert result.response_type == "FAQ_ANSWER" and client.sent[0].text == expected
-    assert "operator" in client.sent[0].keyboard["buttons"][0][0]["action"]["payload"]
+    payloads = [button[0]["action"]["payload"] for button in client.sent[0].keyboard["buttons"]]
+    assert any("all_questions" in payload for payload in payloads)
+    assert any("operator" in payload for payload in payloads)
 
 
 def test_not_found_has_operator_keyboard(vk_env):
     _, client, adapter = vk_env
     assert adapter.handle_event(message("nf-1", "сколько стоит обучение")).response_type == "NOT_FOUND"
-    assert "operator" in client.sent[0].keyboard["buttons"][0][0]["action"]["payload"]
+    payloads = [button[0]["action"]["payload"] for button in client.sent[0].keyboard["buttons"]]
+    assert any("all_questions" in payload for payload in payloads)
+    assert any("operator" in payload for payload in payloads)
 
 
 def test_clarification_callback_full_flow(vk_env):

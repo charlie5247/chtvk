@@ -17,6 +17,8 @@ class IncomingVKMessage:
     timestamp: int | None
     raw_type: str
     payload: dict[str, Any] | None = None
+    sender_id: int | None = None
+    outgoing: bool = False
 
 
 def parse_event(raw: object) -> IncomingVKMessage | None:
@@ -34,11 +36,15 @@ def parse_event(raw: object) -> IncomingVKMessage | None:
     message = obj.get("message", obj) if event_type == "message_new" else obj
     if not isinstance(message, dict):
         raise ValidationError("Некорректный message")
-    user_id = message.get("from_id") or message.get("user_id")
+    sender_id = message.get("from_id")
+    outgoing = event_type == "message_new" and message.get("out") == 1
+    user_id = message.get("user_id") if event_type == "message_event" else (message.get("peer_id") if outgoing else sender_id)
     peer_id = message.get("peer_id")
     text = message.get("text", "")
     if type(user_id) is not int or user_id <= 0 or type(peer_id) is not int or peer_id <= 0 or not isinstance(text, str):
         raise ValidationError("Некорректные поля VK message")
+    if event_type == "message_new" and type(sender_id) is not int:
+        raise ValidationError("Некорректный отправитель VK message")
     cmid = message.get("conversation_message_id")
     timestamp = message.get("date")
     if cmid is not None and type(cmid) is not int:
@@ -51,4 +57,4 @@ def parse_event(raw: object) -> IncomingVKMessage | None:
     callback_event_id = message.get("event_id") if event_type == "message_event" else None
     if event_type == "message_event" and (not isinstance(callback_event_id, str) or not callback_event_id.strip()):
         raise ValidationError("Отсутствует callback event_id")
-    return IncomingVKMessage(transport_event_id.strip(), callback_event_id.strip() if callback_event_id else None, user_id, peer_id, text, cmid, timestamp, event_type, payload)
+    return IncomingVKMessage(transport_event_id.strip(), callback_event_id.strip() if callback_event_id else None, user_id, peer_id, text, cmid, timestamp, event_type, payload, sender_id, outgoing)
