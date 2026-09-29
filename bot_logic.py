@@ -19,6 +19,7 @@ class ResponseType(str, Enum):
     SWITCHED_TO_OPERATOR = "SWITCHED_TO_OPERATOR"
     SWITCHED_TO_BOT = "SWITCHED_TO_BOT"
     OPERATOR_MODE = "OPERATOR_MODE"
+    FAQ_MENU = "FAQ_MENU"
 
 
 @dataclass(frozen=True, slots=True)
@@ -73,10 +74,12 @@ class BotLogic:
         # This check intentionally precedes operator-mode suppression.
         if normalized in BOT_COMMANDS:
             self.interactions.clear_clarification(vk_user_id)
+            self.interactions.clear_faq_menu(vk_user_id)
             self.operator.switch_to_bot(vk_user_id)
             return self._respond(vk_user_id, BotResponse(ResponseType.SWITCHED_TO_BOT, BOT_TEXT))
         if normalized in OPERATOR_COMMANDS:
             self.interactions.clear_clarification(vk_user_id)
+            self.interactions.clear_faq_menu(vk_user_id)
             self.operator.switch_to_operator(vk_user_id)
             return self._respond(vk_user_id, BotResponse(ResponseType.SWITCHED_TO_OPERATOR, OPERATOR_TEXT))
         if self.operator.is_operator_mode(vk_user_id):
@@ -112,6 +115,56 @@ class BotLogic:
         except sqlite3.Error:
             logger.exception("SQLite failure while selecting clarification for user %s", vk_user_id)
             raise
+
+    def open_faq_menu(self, vk_user_id: int, page: int = 0, nonce: str = "") -> BotResponse | None:
+        if type(page) is not int or page < 0:
+            return None
+        try:
+            with self.connection:
+                self.users.get_or_create_user(vk_user_id)
+                if self.operator.is_operator_mode(vk_user_id):
+                    return BotResponse(ResponseType.OPERATOR_MODE, "")
+                if nonce:
+                    allowed = self.interactions.validate_faq_menu(vk_user_id, nonce)
+                    if allowed is None:
+                        return None
+                    faqs = [faq for faq_id in allowed if (faq := self.search_service.repository.get_active(faq_id))]
+                else:
+                    faqs = self.search_service.repository.active()
+                    nonce = secrets.token_urlsafe(18)
+                    self.interactions.save_faq_menu(vk_user_id, [faq["id"] for faq in faqs], nonce)
+                if page * 5 >= max(len(faqs), 1):
+                    return None
+                options = [{"faq_id": faq["id"], "question": faq["question"], "nonce": nonce} for faq in faqs]
+                return BotResponse(ResponseType.FAQ_MENU, "Выберите интересующий вопрос:", options=options, faq_id=page)
+        except sqlite3.Error:
+            logger.exception("SQLite failure while opening FAQ menu for user %s", vk_user_id)
+            raise
+
+    def select_faq_menu(self, vk_user_id: int, faq_id: int, nonce: str) -> BotResponse | None:
+        if type(faq_id) is not int or faq_id <= 0 or not isinstance(nonce, str) or not nonce:
+            return None
+        with self.connection:
+            if self.operator.is_operator_mode(vk_user_id):
+                return BotResponse(ResponseType.OPERATOR_MODE, "")
+            allowed = self.interactions.validate_faq_menu(vk_user_id, nonce)
+            if allowed is None or faq_id not in allowed:
+                return None
+            faq = self.search_service.repository.get_active(faq_id)
+            if faq is None:
+                return None
+            self.interactions.clear_faq_menu(vk_user_id)
+            return self._respond(vk_user_id, BotResponse(ResponseType.FAQ_ANSWER, faq["answer"], faq_id, confidence=Confidence.HIGH))
+
+    def operator_return_to_bot(self, vk_user_id: int) -> BotResponse | None:
+        with self.connection:
+            self.users.get_or_create_user(vk_user_id)
+            if not self.operator.is_operator_mode(vk_user_id):
+                return None
+            self.interactions.clear_clarification(vk_user_id)
+            self.interactions.clear_faq_menu(vk_user_id)
+            self.operator.switch_to_bot(vk_user_id)
+            return self._respond(vk_user_id, BotResponse(ResponseType.SWITCHED_TO_BOT, BOT_TEXT))
 
 
 def handle_message(vk_user_id: int, text: str, connection: sqlite3.Connection) -> BotResponse:

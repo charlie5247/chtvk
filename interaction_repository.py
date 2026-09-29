@@ -63,10 +63,37 @@ class InteractionRepository:
         self.connection.execute("DELETE FROM pending_clarifications WHERE vk_user_id=?", (vk_user_id,))
         self._commit()
 
+    def save_faq_menu(self, vk_user_id: int, faq_ids: list[int], nonce: str, ttl_minutes: int = 10) -> None:
+        now = datetime.now(timezone.utc)
+        expires = now + timedelta(minutes=ttl_minutes)
+        self.connection.execute(
+            "INSERT INTO pending_faq_menus(vk_user_id,faq_ids,nonce,created_at,expires_at) VALUES(?,?,?,?,?) "
+            "ON CONFLICT(vk_user_id) DO UPDATE SET faq_ids=excluded.faq_ids,nonce=excluded.nonce,created_at=excluded.created_at,expires_at=excluded.expires_at",
+            (vk_user_id, json.dumps(faq_ids), nonce, now.isoformat(timespec="seconds"), expires.isoformat(timespec="seconds")),
+        )
+        self._commit()
+
+    def validate_faq_menu(self, vk_user_id: int, nonce: str) -> list[int] | None:
+        row = self.connection.execute(
+            "SELECT faq_ids,nonce,expires_at FROM pending_faq_menus WHERE vk_user_id=?", (vk_user_id,)
+        ).fetchone()
+        if not row or row["expires_at"] < utc_now() or not secrets.compare_digest(row["nonce"], nonce):
+            return None
+        try:
+            ids = json.loads(row["faq_ids"])
+        except (TypeError, json.JSONDecodeError):
+            return None
+        return ids if isinstance(ids, list) else None
+
+    def clear_faq_menu(self, vk_user_id: int) -> None:
+        self.connection.execute("DELETE FROM pending_faq_menus WHERE vk_user_id=?", (vk_user_id,))
+        self._commit()
+
     def delete_user_data(self, vk_user_id: int) -> None:
         self.connection.execute("DELETE FROM messages WHERE vk_user_id=?", (vk_user_id,))
         self.connection.execute("DELETE FROM unknown_questions WHERE vk_user_id=?", (vk_user_id,))
         self.connection.execute("DELETE FROM pending_clarifications WHERE vk_user_id=?", (vk_user_id,))
+        self.connection.execute("DELETE FROM pending_faq_menus WHERE vk_user_id=?", (vk_user_id,))
         self.connection.execute("DELETE FROM users WHERE vk_user_id=?", (vk_user_id,))
         self._commit()
 
@@ -82,5 +109,10 @@ class InteractionRepository:
 
     def purge_expired_clarifications(self, now: str | None = None) -> int:
         cursor = self.connection.execute("DELETE FROM pending_clarifications WHERE expires_at < ?", (now or utc_now(),))
+        self._commit()
+        return cursor.rowcount
+
+    def purge_expired_faq_menus(self, now: str | None = None) -> int:
+        cursor = self.connection.execute("DELETE FROM pending_faq_menus WHERE expires_at < ?", (now or utc_now(),))
         self._commit()
         return cursor.rowcount
