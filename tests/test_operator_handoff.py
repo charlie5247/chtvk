@@ -26,7 +26,7 @@ def test_callback_handoff_is_per_user_and_bot_resumes(handoff, monkeypatch):
     user_a, user_b = 501, 502
 
     assert adapter.handle_event(message("a-faq", "почему учеба по субботам", user_a)).response_type == "FAQ_ANSWER"
-    operator_payload = json.loads(client.sent[-1].keyboard["buttons"][0][0]["action"]["payload"])
+    operator_payload = json.loads(client.sent[-1].keyboard["buttons"][1][0]["action"]["payload"])
     assert adapter.handle_event(callback("a-operator", operator_payload, user_a)).response_type == "SWITCHED_TO_OPERATOR"
     assert client.callbacks[-1]["text"] == "Диалог передан оператору"
     assert "Пока диалог передан оператору" in client.sent[-1].text

@@ -20,8 +20,9 @@ def main() -> None:
         messages = interactions.purge_messages_before(cutoff)
         unknown = interactions.purge_unknown_before(cutoff)
         clarifications = interactions.purge_expired_clarifications()
+        faq_menus = interactions.purge_expired_faq_menus()
         events = EventDeduplicator(connection, 1).cleanup()
-        print(f"Удалено messages: {messages}; unknown_questions: {unknown}; pending_clarifications: {clarifications}; processed_vk_events: {events}")
+        print(f"Удалено messages: {messages}; unknown_questions: {unknown}; pending_clarifications: {clarifications}; pending_faq_menus: {faq_menus}; processed_vk_events: {events}")
     finally:
         connection.close()
 

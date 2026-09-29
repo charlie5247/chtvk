@@ -44,10 +44,25 @@ class FAQRepository:
         ]
 
     def active(self) -> list[dict]:
-        return [faq for faq in self.all() if faq["active"]]
+        rows = self.connection.execute(
+            "SELECT * FROM faq WHERE active=1 ORDER BY priority, id"
+        ).fetchall()
+        return [
+            {**dict(row), "keywords": json.loads(row["keywords"]),
+             "aliases": json.loads(row["aliases"]), "active": True}
+            for row in rows
+        ]
 
     def get_active(self, faq_id: int) -> dict | None:
-        return next((faq for faq in self.active() if faq["id"] == faq_id), None)
+        if type(faq_id) is not int or faq_id <= 0:
+            return None
+        row = self.connection.execute(
+            "SELECT * FROM faq WHERE id=? AND active=1", (faq_id,)
+        ).fetchone()
+        if row is None:
+            return None
+        return {**dict(row), "keywords": json.loads(row["keywords"]),
+                "aliases": json.loads(row["aliases"]), "active": True}
 
     def count(self) -> int:
         return int(self.connection.execute("SELECT COUNT(*) FROM faq").fetchone()[0])

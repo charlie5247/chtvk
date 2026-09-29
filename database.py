@@ -61,6 +61,16 @@ CREATE TABLE IF NOT EXISTS pending_clarifications (
     expires_at TEXT NOT NULL,
     FOREIGN KEY (vk_user_id) REFERENCES users(vk_user_id) ON DELETE CASCADE
 );
+CREATE TABLE IF NOT EXISTS pending_faq_menus (
+    vk_user_id INTEGER PRIMARY KEY,
+    faq_ids TEXT NOT NULL,
+    nonce TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    FOREIGN KEY (vk_user_id) REFERENCES users(vk_user_id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_pending_faq_menus_expiry
+    ON pending_faq_menus(expires_at);
 CREATE TABLE IF NOT EXISTS processed_vk_events (
     event_id TEXT PRIMARY KEY,
     status TEXT NOT NULL CHECK (status IN ('PROCESSING', 'DONE', 'FAILED')),
